@@ -3,6 +3,10 @@ from sys import exit
 import re
 import sys
 
+def removeNumber(s):
+    result = ''.join([i for i in s if not i.isdigit()])
+    return result
+
 class authMethod:
     def __init__(self):
         self.type = ""
@@ -10,10 +14,37 @@ class authMethod:
         self.paramKey = []
         self.paramValue = []
 
+    def printInfo(self):
+        print("---------- method ------------")
+        print("type:", self.type)
+        print("param name:", self.param)
+        print("param:")
+        for i in range(len(self.paramKey)):
+            print(self.paramKey[i] + ":", self.paramValue[i])
+    
+    def init_sign(self):
+        self.type = "AUTH_METHOD_SIG"
+        self.param = "sig"
+        self.paramKey = ["pk", "sig", "alg", "data"]
+        self.paramValue = ["", "sig", "sig_alg", "raw_data"]
+
+    def init_hash(self):
+        self.type = "AUTH_METHOD_HASH"
+        self.param = "hash"
+        self.paramKey = ["data", "hash"]
+        self.paramValue = ["raw_data", "tb_fw_config_hash"]
+
+    def init_nv(self, name):
+        self.type = "AUTH_METHOD_NV_CTR"
+        self.param = "nv_ctr"
+        self.paramKey = ["cert_nv_ctr", "plat_nv_ctr"]
+        name = name.replace("counter", "ctr")
+        self.paramValue = [name, name]
+
 class authData:
     def __init__(self, type_desc):
         self.type_desc = type_desc
-        self.ptr = ""
+        self.ptr = removeNumber(type_desc) + "_buf"
         self.len = "(unsigned int)HASH_DER_LEN"
         self.oid = ""
 
@@ -30,9 +61,11 @@ class image:
         self.image_id = ""
         self.parent = ""
         self.hash = ""
+        self.image_type = "IMG_RAW"
 
     def printInfo(self):
         print("============== image ==============")
+        print("image name:", self.imageName)
         print("image id:", self.image_id)
         print("parent:", self.parent)
         print("hash:", self.hash)
@@ -41,9 +74,9 @@ class cert:
     def __init__(self, certName):
         self.certName = certName
         self.img_id = ""
-        self.img_type = ""
+        self.img_type = "IMG_CERT"
         self.parent = ""
-        self.signing_key = ""
+        # self.signing_key = ""
         self.antirollback_counter = ""
         self.img_auth_methods_name = "(const auth_method_desc_t[AUTH_METHOD_NUM])"
         self.img_auth_methods = []
@@ -56,15 +89,13 @@ class cert:
         print("image id:", self.img_id)
         print("image type:", self.img_type)
         print("parent:", self.parent)
-        print("signing key:", self.signing_key)
+        # print("signing key:", self.signing_key)
         print("antirollback:", self.antirollback_counter)
         print("authenticated data:")
         for d in self.authenticated_data:
             d.printInfo()
-
-def removeNumber(s):
-    result = ''.join([i for i in s if not i.isdigit()])
-    return result
+        for m in self.img_auth_methods:
+            m.printInfo()
 
 def parseBraces(line, braces):
     if "{" in line:
@@ -143,6 +174,15 @@ def extractCert(filename, certName):
         
         if parseBraces(line, stack):
             #print("cert done")
+            sign = authMethod()
+            sign.init_sign()
+            thisCert.img_auth_methods.append(sign)
+            
+            if thisCert.antirollback_counter != "":
+                nv = authMethod()
+                nv.init_nv(thisCert.antirollback_counter)
+                thisCert.img_auth_methods.append(nv)
+
             return thisCert
         
 
