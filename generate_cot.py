@@ -69,6 +69,7 @@ class image:
         self.parent = ""
         self.hash = ""
         self.image_type = "IMG_RAW"
+        self.img_auth_methods = []
 
     def printInfo(self):
         print("============== image ==============")
@@ -235,6 +236,9 @@ def extractImage(filename, imageName):
             continue
 
         if parseBraces(line, stack):
+            m = authMethod()
+            m.init_hash(thisImage.hash)
+            thisImage.img_auth_methods.append(m)
             return thisImage
 
 def images(filename, braces):
@@ -308,17 +312,28 @@ def rawImgToCert(i, certs):
     newCert.img_id = i.image_id
     newCert.img_type = i.image_type
     newCert.parent = i.parent
-
-    m = authMethod()
-    m.init_hash(i.hash)
-    newCert.img_auth_methods.append(m)
+    newCert.img_auth_methods = i.img_auth_methods
 
     certs.append(newCert)
     return newCert
 
-def generateCot(images, certs, outputfileName):
-    f = open(outputfileName, 'a')
+def generateBuf(certs, f):
+    buffers = set()
+    for c in certs:
+        for d in c.authenticated_data:
+            buffers.add(d.ptr)
+            
+    for buf in buffers:
+        if "sp_pkg_hash_buf" in buf:
+            f.write("static unsigned char {}[MAX_SP_IDS][HASH_DER_LEN];\n".format(buf))
+        elif "pk" in buf:
+            f.write("static unsigned char {}[PK_DER_LEN];\n".format(buf))
+        else:
+            f.write("static unsigned char {}[HASH_DER_LEN];\n".format(buf))
 
+    f.write("\n")
+
+def generateInclude(f):
     f.write("#include <stddef.h>\n")
     f.write("#include <mbedtls/version.h>\n")
     f.write("#include <common/tbbr/cot_def.h>\n")
@@ -326,11 +341,27 @@ def generateCot(images, certs, outputfileName):
     f.write("#include <tools_share/cca_oid.h>\n")
     f.write("#include <platform_def.h>\n\n")
 
-    for c in certs:
-        generateCert(c, f)
+def generateLiscence(f):
+    license = '''/*
+ * Copyright (c) 2022-2023, Arm Limited. All rights reserved.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+'''
+    f.write(license)
+    f.write("\n")
+
+def generateCot(images, certs, outputfileName):
+    f = open(outputfileName, 'a')
+
+    generateLiscence(f)
+    generateInclude(f)
+    generateBuf(certs, f)
 
     for i in images:
         c = rawImgToCert(i, certs)
+
+    for c in certs:
         generateCert(c, f)
 
     f.close()
