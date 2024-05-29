@@ -7,6 +7,13 @@ def removeNumber(s):
     result = ''.join([i for i in s if not i.isdigit()])
     return result
 
+def extractNumber(s):
+    for i in s:
+        if i.isdigit():
+            return (int)(i)
+    
+    return -1
+
 class authMethod:
     def __init__(self):
         self.type = ""
@@ -28,11 +35,11 @@ class authMethod:
         self.paramKey = ["pk", "sig", "alg", "data"]
         self.paramValue = ["", "sig", "sig_alg", "raw_data"]
 
-    def init_hash(self):
+    def init_hash(self, hash):
         self.type = "AUTH_METHOD_HASH"
         self.param = "hash"
         self.paramKey = ["data", "hash"]
-        self.paramValue = ["raw_data", "tb_fw_config_hash"]
+        self.paramValue = ["raw_data", hash]
 
     def init_nv(self, name):
         self.type = "AUTH_METHOD_NV_CTR"
@@ -142,7 +149,7 @@ def extractCert(filename, certName):
     for line in filename:
 
         if "root-certificate" in line:
-            thisCert.parent = None
+            thisCert.parent = "NULL"
             continue
         
         match = parent.search(line)
@@ -248,9 +255,91 @@ def images(filename, braces):
                 #print("images done")
                 return allImages
     
+def generateCert(c, f):
+    f.write("static const auth_img_desc_t {} = {{\n".format(c.certName))
+    f.write("\t.img_type = {},\n".format(c.img_type))
+
+    if c.parent != "NULL":
+        f.write("\t.parent = &{},\n".format(c.parent))
+    else:  
+        f.write("\t.parent = {},\n".format(c.parent))
+
+    if len(c.img_auth_methods) != 0:
+        f.write("\t.img_auth_methods = (const auth_method_desc_t[AUTH_METHOD_NUM]) {\n")
+        for i, m in enumerate(c.img_auth_methods):
+            f.write("\t\t[{}] = {{\n".format(i))
+            
+            f.write("\t\t\t.type = {},\n".format(m.type))
+            f.write("\t\t\t.param.{} = {{\n".format(m.param))
+
+            for j in range(len(m.paramKey)):
+                f.write("\t\t\t\t.{} = &{}{}\n".format(m.paramKey[j], m.paramValue[j], "," if j != len(m.paramKey) - 1 else ""))
+
+            f.write("\t\t\t}\n")
+            f.write("\t\t}}{}\n".format("," if i != len(c.img_auth_methods) - 1 else ""))
+
+        f.write("\t}}{}\n".format("," if len(c.authenticated_data) != 0 else ""))
+
+    if len(c.authenticated_data) != 0:
+        f.write("\t.authenticated_data = (const auth_param_desc_t[COT_MAX_VERIFIED_PARAMS]) {\n")
+
+        for i, d in enumerate(c.authenticated_data):
+            f.write("\t\t[{}] = {{\n".format(i))
+            f.write("\t\t\t.type_desc = &{},\n".format(d.type_desc))
+            f.write("\t\t\t.data = {\n")
+            
+            n = extractNumber(d.type_desc)
+            if n == -1:
+                f.write("\t\t\t\t.ptr = (void *){},\n".format(d.ptr))
+            else:
+                f.write("\t\t\t\t.ptr = (void *){}[{}],\n".format(d.ptr, n-1))
+
+            f.write("\t\t\t\t.len = {}\n".format(d.len))
+            f.write("\t\t\t}\n")
+
+            f.write("\t\t}}{}\n".format("," if i != len(c.authenticated_data) - 1 else ""))
+
+        f.write("\t}\n")
+
+    f.write("};\n\n")
+
+def rawImgToCert(i, certs):
+    newCert = cert(i.imageName)
+    newCert.img_id = i.image_id
+    newCert.img_type = i.image_type
+    newCert.parent = i.parent
+
+    m = authMethod()
+    m.init_hash(i.hash)
+    newCert.img_auth_methods.append(m)
+
+    certs.append(newCert)
+    return newCert
+
+def generateCot(images, certs, outputfileName):
+    f = open(outputfileName, 'a')
+
+    f.write("#include <stddef.h>\n")
+    f.write("#include <mbedtls/version.h>\n")
+    f.write("#include <common/tbbr/cot_def.h>\n")
+    f.write("#include <drivers/auth/auth_mod.h>\n")
+    f.write("#include <tools_share/cca_oid.h>\n")
+    f.write("#include <platform_def.h>\n\n")
+
+    for c in certs:
+        generateCert(c, f)
+
+    for i in images:
+        c = rawImgToCert(i, certs)
+        generateCert(c, f)
+
+    f.close()
+    return
 
 def main(): 
     filename = open(sys.argv[1])
+    outputfileName = sys.argv[2]
+
     braces = []
 
     allImages = []
@@ -264,10 +353,10 @@ def main():
             braces.append("{")
             certs = manifest(filename, braces)
 
-    for c in certs:
-        c.printInfo()
-    for i in allImages:
-        i.printInfo()
+    generateCot(allImages, certs, outputfileName)
   
 if __name__=="__main__": 
+    if (len(sys.argv) < 3):
+        print("usage: python3 " + sys.argv[0] + " [dtsi file path] [output c file path]")
+        exit()
     main() 
