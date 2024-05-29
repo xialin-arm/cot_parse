@@ -105,6 +105,12 @@ class cert:
         for m in self.img_auth_methods:
             m.printInfo()
 
+class generic:
+    def __init__(self, name):
+        self.name = name
+        self.id = ""
+        self.oid = ""
+
 def parseBraces(line, braces):
     if "{" in line:
         braces.append("{")
@@ -258,7 +264,63 @@ def images(filename, braces):
             if parseBraces(line, braces):
                 #print("images done")
                 return allImages
+
+def extractOther(filename, name):
+    stack = ["{"]
+
+    oid = re.compile(r'oid *= *([\w]+) *;')
+    id = re.compile(r'id *= *<([\w]+)> *;')
     
+    thisGeneric = generic(name)
+
+    for line in filename:
+        match = oid.search(line)
+        if match != None:
+            thisGeneric.oid = match.groups()[0]
+            continue
+
+        match = id.search(line)
+        if match != None:
+            thisGeneric.id = match.groups()[0]
+            continue
+
+        if parseBraces(line, stack):
+            return thisGeneric
+
+def Ctrs(filename):
+    braces = ["{"]
+    ctrs = []
+
+    reg = re.compile(r'([\w]+) *: *([\w]+)')
+
+    for line in filename:
+        match = reg.search(line)
+
+        if match != None:
+            word1, word2 = match.groups()
+            ctrs.append(extractOther(filename, word2))
+        else:
+            if parseBraces(line, braces):
+                return ctrs
+        
+
+def PKs(filename):
+    braces = ["{"]
+    pks = []
+
+    reg = re.compile(r'([\w]+) *: *([\w]+)')
+
+    for line in filename:
+        match = reg.search(line)
+        if match != None:
+            word1, word2 = match.groups()
+            pks.append(extractOther(filename, word2))
+
+        else:
+            if parseBraces(line, braces):
+                return pks
+
+
 def generateCert(c, f):
     f.write("static const auth_img_desc_t {} = {{\n".format(c.certName))
     f.write("\t.img_type = {},\n".format(c.img_type))
@@ -351,7 +413,50 @@ def generateLiscence(f):
     f.write(license)
     f.write("\n")
 
-def generateCot(images, certs, outputfileName):
+def generateParam(certs, ctrs, pks, f):
+    param = set()
+
+    f.write("static auth_param_type_desc_t subject_pk = AUTH_PARAM_TYPE_DESC(AUTH_PARAM_PUB_KEY, 0);\n")
+    f.write("static auth_param_type_desc_t sig = AUTH_PARAM_TYPE_DESC(AUTH_PARAM_SIG, 0);\n")
+    f.write("static auth_param_type_desc_t sig_alg = AUTH_PARAM_TYPE_DESC(AUTH_PARAM_SIG_ALG, 0);\n")
+    f.write("static auth_param_type_desc_t raw_data = AUTH_PARAM_TYPE_DESC(AUTH_PARAM_RAW_DATA, 0);\n")
+    f.write("\n")
+
+    for c in certs:
+        for d in c.authenticated_data:
+            if "pk" in d.type_desc:
+                f.write("static auth_param_type_desc_t {} = "\
+                        "AUTH_PARAM_TYPE_DESC(AUTH_PARAM_PUB_KEY, {});\n".format(d.type_desc, d.oid))
+            elif "hash" in d.type_desc:
+                f.write("static auth_param_type_desc_t {} = "\
+                        "AUTH_PARAM_TYPE_DESC(AUTH_PARAM_HASH, {});\n".format(d.type_desc, d.oid))
+            elif "ctr" in d.type_desc:
+                f.write("static auth_param_type_desc_t {} = "\
+                        "AUTH_PARAM_TYPE_DESC(AUTH_PARAM_NV_CTR, {});\n".format(d.type_desc, d.oid))
+        
+        for m in c.img_auth_methods:
+            for i in m.paramValue:
+                param.add(i)
+
+    f.write("\n")
+
+    for c in ctrs:
+        f.write("static auth_param_type_desc_t {} = AUTH_PARAM_TYPE_DESC(AUTH_PARAM_NV_CTR, {});\n".format(c.name, c.oid))
+
+    for p in pks:
+        f.write("static auth_param_type_desc_t {} = AUTH_PARAM_TYPE_DESC(AUTH_PARAM_PUB_KEY, {});\n".format(p.name, p.oid))
+
+    f.write("\n")
+
+def generateCotDef(certs, f):
+    f.write("static const auth_img_desc_t * const cot_desc[] = {\n")
+    for i, c in enumerate(certs):
+        f.write("\t[{}]	=	&{}{}\n".format(c.certName.upper() + "_ID", c.certName, "," if i != len(certs) - 1 else ""))
+
+    f.write("}\n\n")
+    f.write("REGISTER_COT(cot_desc);\n")
+
+def generateCot(images, certs, ctrs, pks, outputfileName):
     f = open(outputfileName, 'a')
 
     generateLiscence(f)
@@ -360,9 +465,13 @@ def generateCot(images, certs, outputfileName):
 
     for i in images:
         c = rawImgToCert(i, certs)
+    
+    generateParam(certs, ctrs, pks, f)
 
     for c in certs:
         generateCert(c, f)
+
+    generateCotDef(certs, f)
 
     f.close()
     return
@@ -375,16 +484,36 @@ def main():
 
     allImages = []
     certs = []
+    pks = []
+    ctrs = []
+
+    regex = re.compile(r'([\w]+) *: *([\w]+)')
+    pkregex = re.compile(r'[\w]_keys *{')
 
     for line in filename:
         if "images" in line:
             braces.append("{")
             allImages = images(filename, braces)
-        elif "manifests" in line:
+            continue
+        
+        if "manifests" in line:
             braces.append("{")
             certs = manifest(filename, braces)
+            continue
+        
+        match = regex.search(line)
+        if match != None:
+            word1, word2 = match.groups()
+            if "counter" in word2:
+                ctrs = Ctrs(filename)
+            continue
 
-    generateCot(allImages, certs, outputfileName)
+        match = pkregex.search(line)
+        if match != None:
+            pks = PKs(filename)
+            continue
+
+    generateCot(allImages, certs, ctrs, pks, outputfileName)
   
 if __name__=="__main__": 
     if (len(sys.argv) < 3):
