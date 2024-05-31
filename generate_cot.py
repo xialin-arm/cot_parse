@@ -51,8 +51,13 @@ class authMethod:
 class authData:
     def __init__(self, type_desc):
         self.type_desc = type_desc
-        self.ptr = removeNumber(type_desc) + "_buf"
-        self.len = "(unsigned int)HASH_DER_LEN"
+        if "sp_pkg" in type_desc:
+            type_desc = removeNumber(type_desc)
+        self.ptr = type_desc + "_buf"
+        if "pk" in type_desc:
+            self.len = "(unsigned int)PK_DER_LEN"
+        elif "hash" in type_desc:
+            self.len = "(unsigned int)HASH_DER_LEN"
         self.oid = ""
 
     def printInfo(self):
@@ -69,6 +74,7 @@ class image:
         self.parent = ""
         self.hash = ""
         self.image_type = "IMG_RAW"
+        self.ifdef = ""
         self.img_auth_methods = []
 
     def printInfo(self):
@@ -84,7 +90,7 @@ class cert:
         self.img_id = ""
         self.img_type = "IMG_CERT"
         self.parent = ""
-        # self.signing_key = ""
+        self.ifdef = ""
         self.antirollback_counter = ""
         self.img_auth_methods_name = "(const auth_method_desc_t[AUTH_METHOD_NUM])"
         self.img_auth_methods = []
@@ -141,9 +147,11 @@ def extractData(filename, dataName):
             return thisAuthData
 
 
-def extractCert(filename, certName):
+def extractCert(filename, certName, ifdefFlag, ifdefTag):
     stack = ["{"]
     thisCert = cert(certName)
+    if ifdefFlag:
+        thisCert.ifdef = ifdefTag
 
     parent = re.compile(r'parent *= *<&([\w]+)> *;')
     imgidregex = re.compile(r'image-id *= *<([\w]+)> *;')
@@ -158,7 +166,7 @@ def extractCert(filename, certName):
         if "root-certificate" in line:
             thisCert.parent = "NULL"
             continue
-        
+
         match = parent.search(line)
         if match != None:
             thisCert.parent = match.groups()[0]
@@ -204,22 +212,38 @@ def manifest(filename, braces):
     certs = []
 
     reg = re.compile(r'([\w]+) *: *([\w]+)')
+    ifdefregex = re.compile(r'#if defined\(([\w]+)\)')
+    ifdefend = "#endif"
+
+    ifdefFlag = False
+    ifdefTag = ""
 
     for line in filename:
         match = reg.search(line)
 
         if match != None:
             word1, word2 = match.groups()
-            certs.append(extractCert(filename, word2))
+            certs.append(extractCert(filename, word2, ifdefFlag, ifdefTag))
 
         else:
+            match = ifdefregex.search(line)
+            if match != None:
+                ifdefFlag = True
+                ifdefTag = match.groups()[0]
+
+            if ifdefend in line:
+                ifdefFlag = False
+                ifdefTag = ""
+
             if parseBraces(line, braces):
                 #print("manifests done")
                 return certs
         
-def extractImage(filename, imageName):
+def extractImage(filename, imageName, ifdefFlag, ifdefTag):
     stack = ["{"]
     thisImage = image(imageName)
+    if ifdefFlag:
+        thisImage.ifdef = ifdefTag
 
     parent = re.compile(r'parent *= *<&([\w]+)> *;')
     imgidregex = re.compile(r'image-id *= *<([\w]+)> *;')
@@ -251,16 +275,30 @@ def images(filename, braces):
     allImages = []
 
     reg = re.compile(r'([\w]+) *{')
+    ifdefregex = re.compile(r'#if defined\(([\w]+)\)')
+    ifdefend = "#endif"
+
+    ifdefFlag = False
+    ifdefTag = ""
 
     for line in filename:
         match = reg.search(line)
-        
+
         if match != None:
             word = match.groups()[0]
             #print(word)
-            allImages.append(extractImage(filename, word))
+            allImages.append(extractImage(filename, word, ifdefFlag, ifdefTag))
 
         else:
+            match = ifdefregex.search(line)
+            if match != None:
+                ifdefFlag = True
+                ifdefTag = match.groups()[0]
+
+            if ifdefend in line:
+                ifdefFlag = False
+                ifdefTag = ""
+
             if parseBraces(line, braces):
                 #print("images done")
                 return allImages
@@ -322,7 +360,11 @@ def PKs(filename):
 
 
 def generateCert(c, f):
+    if c.ifdef != "":
+        f.write("#if defined({})\n".format(c.ifdef))
+
     f.write("static const auth_img_desc_t {} = {{\n".format(c.certName))
+    f.write("\t.img_id = {},\n".format(c.img_id))
     f.write("\t.img_type = {},\n".format(c.img_type))
 
     if c.parent != "NULL":
@@ -355,7 +397,7 @@ def generateCert(c, f):
             f.write("\t\t\t.data = {\n")
             
             n = extractNumber(d.type_desc)
-            if n == -1:
+            if "pkg" not in d.type_desc or n == -1:
                 f.write("\t\t\t\t.ptr = (void *){},\n".format(d.ptr))
             else:
                 f.write("\t\t\t\t.ptr = (void *){}[{}],\n".format(d.ptr, n-1))
@@ -368,6 +410,8 @@ def generateCert(c, f):
         f.write("\t}\n")
 
     f.write("};\n\n")
+    if c.ifdef != "":
+        f.write("#endif /* {} */\n\n".format(c.ifdef))
 
 def rawImgToCert(i, certs):
     newCert = cert(i.imageName)
@@ -375,6 +419,7 @@ def rawImgToCert(i, certs):
     newCert.img_type = i.image_type
     newCert.parent = i.parent
     newCert.img_auth_methods = i.img_auth_methods
+    newCert.ifdef = i.ifdef
 
     certs.append(newCert)
     return newCert
@@ -423,6 +468,9 @@ def generateParam(certs, ctrs, pks, f):
     f.write("\n")
 
     for c in certs:
+        if c.ifdef != "" and len(c.authenticated_data) != 0:
+            f.write("#if defined({})\n".format(c.ifdef))
+        
         for d in c.authenticated_data:
             if "pk" in d.type_desc:
                 f.write("static auth_param_type_desc_t {} = "\
@@ -434,9 +482,11 @@ def generateParam(certs, ctrs, pks, f):
                 f.write("static auth_param_type_desc_t {} = "\
                         "AUTH_PARAM_TYPE_DESC(AUTH_PARAM_NV_CTR, {});\n".format(d.type_desc, d.oid))
         
-        for m in c.img_auth_methods:
-            for i in m.paramValue:
-                param.add(i)
+        # for m in c.img_auth_methods:
+        #     for i in m.paramValue:
+        #         param.add(i)
+        if c.ifdef != "" and len(c.authenticated_data) != 0:
+            f.write("#endif /* {} */\n".format(c.ifdef))
 
     f.write("\n")
 
