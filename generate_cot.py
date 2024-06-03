@@ -36,11 +36,11 @@ class authMethod:
         for i in range(len(self.paramKey)):
             print(self.paramKey[i] + ":", self.paramValue[i])
     
-    def init_sign(self):
+    def init_sign(self, keyname):
         self.type = "AUTH_METHOD_SIG"
         self.param = "sig"
         self.paramKey = ["pk", "sig", "alg", "data"]
-        self.paramValue = ["", "sig", "sig_alg", "raw_data"]
+        self.paramValue = [keyname, "sig", "sig_alg", "raw_data"]
 
     def init_hash(self, hash):
         self.type = "AUTH_METHOD_HASH"
@@ -61,10 +61,10 @@ class authData:
         if "sp_pkg" in type_desc:
             type_desc = removeNumber(type_desc)
         self.ptr = type_desc + "_buf"
-        if "pk" in type_desc:
-            self.len = "(unsigned int)PK_DER_LEN"
-        elif "hash" in type_desc:
+        if "hash" in type_desc:
             self.len = "(unsigned int)HASH_DER_LEN"
+        elif "pk" in type_desc:
+            self.len = "(unsigned int)PK_DER_LEN"
         self.oid = ""
 
     def printInfo(self):
@@ -98,6 +98,7 @@ class cert:
         self.img_type = "IMG_CERT"
         self.parent = ""
         self.ifdef = ""
+        self.signing_key = ""
         self.antirollback_counter = ""
         #self.img_auth_methods_name = "(const auth_method_desc_t[AUTH_METHOD_NUM])"
         self.img_auth_methods = []
@@ -204,7 +205,7 @@ def extractCert(filename, certName, ifdefFlag, ifdefTag):
         if parseBraces(line, stack):
             #print("cert done")
             sign = authMethod()
-            sign.init_sign()
+            sign.init_sign(thisCert.signing_key)
             thisCert.img_auth_methods.append(sign)
             
             if thisCert.antirollback_counter != "":
