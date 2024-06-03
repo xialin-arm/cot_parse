@@ -14,6 +14,12 @@ def extractNumber(s):
     
     return -1
 
+def peek_line(f):
+    pos = f.tell()
+    line = f.readline()
+    f.seek(pos)
+    return line
+
 class authMethod:
     def __init__(self):
         self.type = ""
@@ -69,37 +75,37 @@ class authData:
 
 class image:
     def __init__(self, imageName):
-        self.imageName = imageName
-        self.image_id = ""
+        self.img_name = imageName
+        self.img_id = ""
         self.parent = ""
         self.hash = ""
-        self.image_type = "IMG_RAW"
+        self.img_type = "IMG_RAW"
         self.ifdef = ""
         self.img_auth_methods = []
 
     def printInfo(self):
         print("============== image ==============")
-        print("image name:", self.imageName)
-        print("image id:", self.image_id)
+        print("image name:", self.img_name)
+        print("image id:", self.img_id)
         print("parent:", self.parent)
         print("hash:", self.hash)
 
 class cert:
     def __init__(self, certName):
-        self.certName = certName
+        self.cert_name = certName
         self.img_id = ""
         self.img_type = "IMG_CERT"
         self.parent = ""
         self.ifdef = ""
         self.antirollback_counter = ""
-        self.img_auth_methods_name = "(const auth_method_desc_t[AUTH_METHOD_NUM])"
+        #self.img_auth_methods_name = "(const auth_method_desc_t[AUTH_METHOD_NUM])"
         self.img_auth_methods = []
-        self.authenticated_data_name = "(const auth_param_desc_t[COT_MAX_VERIFIED_PARAMS])"
+        #self.authenticated_data_name = "(const auth_param_desc_t[COT_MAX_VERIFIED_PARAMS])"
         self.authenticated_data = []
 
     def printInfo(self):
         print("===================== cert ======================")
-        print("cert:", self.certName)
+        print("cert:", self.cert_name)
         print("image id:", self.img_id)
         print("image type:", self.img_type)
         print("parent:", self.parent)
@@ -257,7 +263,7 @@ def extractImage(filename, imageName, ifdefFlag, ifdefTag):
 
         match = imgidregex.search(line)
         if match != None:
-            thisImage.image_id = match.groups()[0]
+            thisImage.img_id = match.groups()[0]
             continue
 
         match = hashregex.search(line)
@@ -363,7 +369,7 @@ def generateCert(c, f):
     if c.ifdef != "":
         f.write("#if defined({})\n".format(c.ifdef))
 
-    f.write("static const auth_img_desc_t {} = {{\n".format(c.certName))
+    f.write("static const auth_img_desc_t {} = {{\n".format(c.cert_name))
     f.write("\t.img_id = {},\n".format(c.img_id))
     f.write("\t.img_type = {},\n".format(c.img_type))
 
@@ -414,9 +420,9 @@ def generateCert(c, f):
         f.write("#endif /* {} */\n\n".format(c.ifdef))
 
 def rawImgToCert(i, certs):
-    newCert = cert(i.imageName)
-    newCert.img_id = i.image_id
-    newCert.img_type = i.image_type
+    newCert = cert(i.img_name)
+    newCert.img_id = i.img_id
+    newCert.img_type = i.img_type
     newCert.parent = i.parent
     newCert.img_auth_methods = i.img_auth_methods
     newCert.ifdef = i.ifdef
@@ -459,7 +465,6 @@ def generateLiscence(f):
     f.write("\n")
 
 def generateParam(certs, ctrs, pks, f):
-    param = set()
 
     f.write("static auth_param_type_desc_t subject_pk = AUTH_PARAM_TYPE_DESC(AUTH_PARAM_PUB_KEY, 0);\n")
     f.write("static auth_param_type_desc_t sig = AUTH_PARAM_TYPE_DESC(AUTH_PARAM_SIG, 0);\n")
@@ -481,10 +486,7 @@ def generateParam(certs, ctrs, pks, f):
             elif "ctr" in d.type_desc:
                 f.write("static auth_param_type_desc_t {} = "\
                         "AUTH_PARAM_TYPE_DESC(AUTH_PARAM_NV_CTR, {});\n".format(d.type_desc, d.oid))
-        
-        # for m in c.img_auth_methods:
-        #     for i in m.paramValue:
-        #         param.add(i)
+
         if c.ifdef != "" and len(c.authenticated_data) != 0:
             f.write("#endif /* {} */\n".format(c.ifdef))
 
@@ -501,7 +503,13 @@ def generateParam(certs, ctrs, pks, f):
 def generateCotDef(certs, f):
     f.write("static const auth_img_desc_t * const cot_desc[] = {\n")
     for i, c in enumerate(certs):
-        f.write("\t[{}]	=	&{}{}\n".format(c.certName.upper() + "_ID", c.certName, "," if i != len(certs) - 1 else ""))
+        if c.ifdef != "":
+            f.write("#if defined({})\n".format(c.ifdef))
+        
+        f.write("\t[{}]	=	&{}{}\n".format(c.cert_name.upper() + "_ID", c.cert_name, "," if i != len(certs) - 1 else ""))
+        
+        if c.ifdef != "":
+            f.write("#endif\n")
 
     f.write("}\n\n")
     f.write("REGISTER_COT(cot_desc);\n")
@@ -539,6 +547,7 @@ def main():
 
     regex = re.compile(r'([\w]+) *: *([\w]+)')
     pkregex = re.compile(r'[\w]_keys *{')
+    brace = re.compile(r' *{ *')
 
     for line in filename:
         if "images" in line:
