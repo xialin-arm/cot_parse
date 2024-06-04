@@ -129,11 +129,11 @@ def main():
             paramExtra.append(i)
 
     if len(paramMissing) != 0:
-        print("param missing:")
+        print("testing param missing:")
         print(paramMissing)
 
     if len(paramExtra) != 0:
-        print("param extra:")
+        print("testing param extra:")
         print(paramExtra)
 
     certMissing = []
@@ -148,11 +148,11 @@ def main():
             certExtra.append(i)
 
     if len(certMissing) != 0:
-        print("cert missing:")
+        print("testing cert missing:")
         print(certMissing)
 
     if len(certExtra) != 0:
-        print("cert extra:")
+        print("testing cert extra:")
         print(certExtra)
 
     cotMissing = []
@@ -167,11 +167,11 @@ def main():
             cotExtra.append(i)
 
     if len(cotMissing) != 0:
-        print("cot missing:")
+        print("testing cot missing:")
         print(cotMissing)
 
     if len(cotExtra) != 0:
-        print("cot extra:")
+        print("testing cot extra:")
         print(cotExtra)
 
     return
