@@ -396,10 +396,6 @@ def generateCert(c, f):
 
         f.write("\t}}{}\n".format("," if len(c.authenticated_data) != 0 else ""))
 
-    isSp = False
-    minSp = math.inf
-    maxSp = 0
-
     if len(c.authenticated_data) != 0:
         f.write("\t.authenticated_data = (const auth_param_desc_t[COT_MAX_VERIFIED_PARAMS]) {\n")
 
@@ -413,9 +409,6 @@ def generateCert(c, f):
                 f.write("\t\t\t\t.ptr = (void *){},\n".format(d.ptr))
             else:
                 f.write("\t\t\t\t.ptr = (void *){}[{}],\n".format(d.ptr, n-1))
-                isSp = True
-                maxSp = n if n > maxSp else maxSp
-                minSp = n if n < minSp else minSp
 
             f.write("\t\t\t\t.len = {}\n".format(d.len))
             f.write("\t\t\t}\n")
@@ -425,10 +418,6 @@ def generateCert(c, f):
         f.write("\t}\n")
 
     f.write("};\n\n")
-
-    if isSp:
-        for i in range(minSp, maxSp+1):
-            f.write("DEFINE_SIP_SP_PKG({});\n".format(i))
 
     if c.ifdef != "":
         f.write("#endif /* {} */\n\n".format(c.ifdef))
