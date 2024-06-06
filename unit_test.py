@@ -58,12 +58,27 @@ def extract_certs(fileName, firstCert):
 
     certReg = re.compile(r'static const auth_img_desc_t ([\w]+) *= *{')
     cotReg = re.compile(r'static const auth_img_desc_t \* const cot_desc\[\]')
+    pkgReg1 = re.compile(r'DEFINE_SIP_SP_PKG\(([\d]+)\);')
+    pkgReg2 = re.compile(r'DEFINE_PLAT_SP_PKG\(([\d]+)\);')
 
     for line in fileName:
         match = certReg.search(line)
         if match != None:
             certs.append(match.groups()[0])
             extract_cert(fileName, stack)
+            continue
+
+        match = pkgReg1.search(line)
+        if match != None:
+            name = "sp_pkg" + match.groups()[0]
+            if name not in certs:
+                certs.append(name)
+
+        match = pkgReg2.search(line)
+        if match != None:
+            name = "sp_pkg" + match.groups()[0]
+            if name not in certs:
+                certs.append(name)
         
         match = cotReg.search(line)
         if match != None:
