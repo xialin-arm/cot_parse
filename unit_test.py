@@ -46,11 +46,10 @@ def extract_param(fileName):
     return charBuf, charBufLen, param, None
 
 def extract_cert(fileName, stack):
-    # for line in fileName:
-    #     if parseBraces(line, stack):
-    #         return True
-    # return False
-    return
+    for line in fileName:
+
+        if parseBraces(line, stack):
+            return
 
 def extract_certs(fileName, firstCert):
     certs = [firstCert]
