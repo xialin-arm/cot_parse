@@ -1,0 +1,23 @@
+cca:
+tb_fw_hash->bl2_image
+
+dual root:
+soc_fw_key_cert: soc_fw_content_pk is content_pk in dual_cot.c
+trusted_nv_ctr: trusted_nv_counter
+missing fwu_cert, scp_bl2u_image
+missing b2l2_image, fw_config, ns_bl2u_image
+extra sp_pkg* package
+
+Question:
+key for the root cert?
+bootloading stage?
+
+the extra/missing image?
+the extra/missing param?
+
+test fail to build
+https://ci.trustedfirmware.org/job/tf-a-ci-gateway/75498/
+
+tf-l3-boot-tests-misc/fvp-tbb-mbedtls-rme-cot-in-dtb,fvp-rme:fvp-trp.tftf-tftf.rme
+tf-l3-boot-tests-misc/fvp-tbb-mbedtls-rsa-ecdsa-with-ecdsa-rotpk-rsa-cert,fvp-default:fvp-tftf-fip.tftf-aemv8a-debug
+tf-l3-boot-tests-misc/fvp-tbb-mbedtls-romlib-fwu,fvp-default:fvp-tftf.gpt-aemv8a.gpt-debug

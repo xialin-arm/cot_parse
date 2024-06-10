@@ -302,7 +302,7 @@ non_volatile_counters: non_volatile_counters {
 	#address-cells = <1>;
 	#size-cells = <0>;
 
-	trusted_nv_counter: trusted_nv_counter {
+	trusted_nv_ctr: trusted_nv_ctr {
 		id  = <TRUSTED_NV_CTR_ID>;
 		oid = TRUSTED_FW_NVCOUNTER_OID;
 	};
