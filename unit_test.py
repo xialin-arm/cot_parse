@@ -429,6 +429,7 @@ def extract_certs(fileName, firstCert):
 
 def extract_cot(fileName):
     cotReg = re.compile(r'\[([\w]+)\][\t ]*=[\t ]*&([\w]+)')
+    cotheadReg = re.compile(r'static const auth_img_desc_t \* const cot_desc\[\]')
     id = []
     value = []
 
@@ -438,6 +439,11 @@ def extract_cot(fileName):
             word1, word2 = match.groups()
             id.append(word1)
             value.append(word2)
+        
+        match = cotheadReg.search(line)
+        if match != None:
+            id = []
+            value = []
 
     return id, value
 
