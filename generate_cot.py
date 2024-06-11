@@ -449,12 +449,13 @@ def generateBuf(certs, f):
 
     f.write("\n")
 
-def generateInclude(f):
+def generateInclude(f, includeFile):
     f.write("#include <stddef.h>\n")
     f.write("#include <mbedtls/version.h>\n")
     f.write("#include <common/tbbr/cot_def.h>\n")
     f.write("#include <drivers/auth/auth_mod.h>\n")
-    f.write("#include <tools_share/cca_oid.h>\n")
+    if includeFile != "":
+        f.write("#include <{}>\n".format(includeFile))
     f.write("#include <platform_def.h>\n\n")
 
 def generateLiscence(f):
@@ -517,11 +518,11 @@ def generateCotDef(certs, f):
     f.write("}\n\n")
     f.write("REGISTER_COT(cot_desc);\n")
 
-def generateCot(images, certs, ctrs, pks, outputfileName):
+def generateCot(images, certs, ctrs, pks, outputfileName, includeFile):
     f = open(outputfileName, 'a')
 
     generateLiscence(f)
-    generateInclude(f)
+    generateInclude(f, includeFile)
     generateBuf(certs, f)
 
     for i in images:
@@ -551,6 +552,8 @@ def main():
     regex = re.compile(r'([\w]+) *: *([\w]+)')
     pkregex = re.compile(r'[\w]_keys *{')
     brace = re.compile(r' *{ *')
+    includerex = re.compile(r'#include <([^0-9]+)>')
+    includefile = ""
 
     for line in filename:
         if "images" in line:
@@ -563,6 +566,13 @@ def main():
             certs = manifest(filename, braces)
             continue
         
+        match = includerex.search(line)
+        if match != None:
+            include = match.groups()[0]
+            if "tools_share" in include:
+                includefile = include
+            
+
         match = regex.search(line)
         if match != None:
             word1, word2 = match.groups()
@@ -575,7 +585,7 @@ def main():
             pks = PKs(filename)
             continue
 
-    generateCot(allImages, certs, ctrs, pks, outputfileName)
+    generateCot(allImages, certs, ctrs, pks, outputfileName, includefile)
   
 if __name__=="__main__": 
     if (len(sys.argv) < 3):

@@ -203,9 +203,13 @@ def parseBraces(line, braces):
     
     return False
 
-def extract_param(fileName):
+def extract_param(fileName, firstChar, firstCharLen):
     charBuf = []
     charBufLen = []
+
+    if firstChar != None:
+        charBuf.append(firstChar)
+        charBufLen.append(firstCharLen)
 
     param = []
 
@@ -447,18 +451,57 @@ def extract_cot(fileName):
 
     return id, value
 
+def extract_include(fileName):
+    include = []
+    includerex = re.compile(r'#include <([^0-9]+)>')
+    charReg = re.compile(r'static unsigned char ([\w]+)\[([\w]+)\] *;')
+
+    for line in fileName:
+        match = includerex.search(line)
+        if match != None:
+            include.append(match.groups()[0])
+        
+        match = charReg.search(line)
+        if match != None:
+            word1, word2 = match.groups()
+            return include, word1, word2
+
+    return include, None, None
+
 def main():
     ref = open(sys.argv[1])
     test = open(sys.argv[2])
 
-    refCharBuf, refCharBufLen, refParam, refFirstCert = extract_param(ref)
-    testCharBuf, testCharBuflen, testParam, testfirstCert = extract_param(test)
+    refInclude, reffirstchar, reffirstcharlen = extract_include(ref)
+    testInclude, testfirstchar, testfirstcharlen = extract_include(test)
+
+    refCharBuf, refCharBufLen, refParam, refFirstCert = extract_param(ref, reffirstchar, reffirstcharlen)
+    testCharBuf, testCharBuflen, testParam, testfirstCert = extract_param(test, testfirstchar, testfirstcharlen)
 
     refCerts, refcertDetail = extract_certs(ref, refFirstCert)
     testCerts, testcertDetail = extract_certs(test, testfirstCert)
     
     refCotKey, refCotValue = extract_cot(ref)
     testCotKey, testCotValue = extract_cot(test)
+
+    missingInclude = []
+    extraInclude = []
+
+    for i in refInclude:
+        if i not in testInclude:
+            missingInclude.append(i)
+
+    for i in testInclude:
+        if i not in refInclude:
+            extraInclude.append(i)
+
+    if len(missingInclude) != 0:
+        print("testing missing include file:")
+        print(missingInclude)
+
+    if len(extraInclude) != 0:
+        print("testing extra include file:")
+        print(extraInclude)
 
     charBufMissing = []
     charBufExtra = []
@@ -551,6 +594,7 @@ def main():
         print("testing cot extra:")
         print(cotExtra)
 
+    print("\n===============================")
     print("image belongs to BL1:")
     print(certBL1)
 
